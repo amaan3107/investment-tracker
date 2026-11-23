@@ -46,11 +46,9 @@ enum DemoData {
         add(aapl, Trade(side: .sell, account: qtTFSA, date: daysAgo(20), quantity: 3, price: 330.00,
                         fees: 4.95, cadAmount: 1_410.00))
 
-        let gold = asset(Asset.goldSymbol, "Physical Gold", .gold, .cad)
-        add(gold, Trade(side: .buy, account: wsTFSA, date: daysAgo(120), quantity: 0.211828, price: 4_650.00,
-                        fees: 15.00, totalAmount: 1_000.00, amountAfterFees: 985.00))
-        add(gold, Trade(side: .buy, account: wsTFSA, date: daysAgo(30), quantity: 0.097525, price: 5_050.00,
-                        fees: 7.50, totalAmount: 500.00, amountAfterFees: 492.50))
+        let vti = asset("VTI", "Vanguard Total Stock Market ETF", .etf, .usd)
+        add(vti, Trade(side: .buy, account: qtTFSA, date: daysAgo(120), quantity: 6, price: 290.00,
+                       fees: 4.95, cadAmount: 2_405.00))
 
         try? context.save()
     }

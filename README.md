@@ -1,69 +1,56 @@
 # Investment Tracker
 
-A private iPhone app for tracking investments from **Wealthsimple** and **Questrade** in one place: stocks, ETFs, index funds and physical gold. You enter your own trades; the app pulls live prices and shows your book cost, average price, today's return and total return. Once installed, it appears on your home screen as **Portfolio**.
+A private iPhone app that combines all your investments into one place to track. Bring in holdings from **Wealthsimple**, **Questrade** or any other broker. You enter your own trades; the app pulls live prices and shows your book cost, average price, today's return and total return. Once installed, it appears on your home screen as **Portfolio**.
 
 No account, no server, no bank logins. **Your trades are stored only on your iPhone.**
 
 <p align="center">
-  <img src="docs/screenshots/portfolio.png" width="260" alt="Portfolio screen with total value, today's return, total return and book cost, and a list of holdings">
+  <img src="docs/screenshots/portfolio.png" width="260" alt="Portfolio screen with total value, today's return, total return and book cost, and a list of holdings (sample data)">
   &nbsp;&nbsp;
-  <img src="docs/screenshots/portfolio-etfs-gold.png" width="260" alt="Holdings list showing ETFs and physical gold, each with its price and the time of that price">
+  <img src="docs/screenshots/portfolio-etfs.png" width="260" alt="Holdings list showing ETFs, each with its price and the time of that price (sample data)">
   &nbsp;&nbsp;
-  <img src="docs/screenshots/portfolio-dark.png" width="260" alt="Portfolio screen in dark mode">
+  <img src="docs/screenshots/portfolio-dark.png" width="260" alt="Portfolio screen in dark mode (sample data)">
 </p>
 
-> All screenshots use made-up demo data.
+> [!NOTE]
+> **These aren't real investments.** Every screenshot uses made-up sample data from the app's built-in demo mode, not anyone's actual portfolio. Real data never leaves the phone it's entered on.
 
 ## Why
-Wealthsimple and Questrade each show only their own accounts, and Google Finance can't add Wealthsimple's physical gold. This app puts everything in one list, in CAD, without handing your data to anyone.
+Each broker only shows its own accounts, and tools like Google Finance can't hold everything. This app puts every investment in one list, in CAD, without handing your data to anyone.
 
 ## Features
 | | |
 |---|---|
-| **One portfolio** | Every account from both brokers in one list, or filter to a broker or a single account (TFSA, RRSP, FHSA, non-registered) |
+| **One portfolio** | Every account from every broker in one list, or filter to a broker or a single account (TFSA, RRSP, FHSA, non-registered) |
 | **The numbers that matter** | Book cost, average price, market value, today's return and total return, per holding and for the whole portfolio |
-| **Live prices** | Canadian (`.TO`) and US stocks and ETFs, gold, and USD → CAD, each shown with the time of the price |
-| **Physical gold** | Enter amount invested, price per oz, quantity and amount after fees; see totals, fees and your averages |
+| **Live prices** | Canadian (`.TO`) and US stocks and ETFs, plus USD → CAD, each shown with the time of the price |
 | **USD holdings** | Shown in USD, converted to CAD in totals. Optionally record the CAD you actually paid so book cost matches your broker |
 | **Sells** | Average-cost (ACB) method per account, the way Canadian brokers report it, with realized gains |
-| **Your own price** | Override any price, such as Wealthsimple's gold price or a mutual fund's daily price |
+| **Your own price** | Override any price, such as a mutual fund's daily price or a price your broker shows |
 | **Private** | Face ID lock, data stored only on the device, JSON backup and restore |
 
 ## Screens
+*Sample data for illustration only.*
 
-| Holding | Physical gold | Adding gold |
-|---|---|---|
-| <img src="docs/screenshots/holding.png" width="240" alt="Apple holding with quantity, average price, book cost, market value, returns and realized gains"> | <img src="docs/screenshots/gold.png" width="240" alt="Gold page with total invested, amount after fees, fees paid, averages per ounce and the live gold price in CAD and USD"> | <img src="docs/screenshots/add-gold.png" width="240" alt="New gold purchase form with amount invested, price per ounce, quantity, amount after fees, and the fee and cost per ounce worked out"> |
+| Holding | Filter by account |
+|---|---|
+| <img src="docs/screenshots/holding.png" width="240" alt="Apple holding with quantity, average price, book cost, market value, returns and realized gains (sample data)"> | <img src="docs/screenshots/filter.png" width="240" alt="Account filter menu listing all accounts, each broker, and each individual account (sample data)"> |
 
 | Activity | Settings |
 |---|---|
-| <img src="docs/screenshots/activity.png" width="240" alt="Activity list of buys and sells grouped by month"> | <img src="docs/screenshots/settings.png" width="240" alt="Settings with Face ID lock, backup export and restore, and current prices"> |
+| <img src="docs/screenshots/activity.png" width="240" alt="Activity list of buys and sells grouped by month (sample data)"> | <img src="docs/screenshots/settings.png" width="240" alt="Settings with Face ID lock, backup export and restore, and current prices (sample data)"> |
 
 ## How the numbers work
 | Number | How it's worked out |
 |---|---|
 | **Book cost** | What you paid, including fees. When you sell, it goes down by the sold shares' share of the average cost |
-| **Average price** | Book cost ÷ shares (or ounces) you still hold |
+| **Average price** | Book cost ÷ shares you still hold |
 | **Market value** | Shares × latest price |
 | **Today's return** | Shares held since yesterday × (price − yesterday's close), plus anything bought today × (price − your purchase price) |
 | **Total return** | Market value − book cost (on what you still hold) |
 | **Realized** | Money from sales − the average cost of the shares you sold |
 
 Each account keeps its own average cost, like your broker does. USD holdings show in USD on their own page and convert to CAD in the totals.
-
-### Gold
-Gold is valued per **troy ounce in CAD**: the COMEX gold price in USD × the live USD → CAD rate. Wealthsimple adds its own spread, so its price will differ slightly. Turn on **Use my own price** on the gold page to type Wealthsimple's price instead.
-
-For each gold purchase you enter what's on your Wealthsimple order:
-
-| Field | Example |
-|---|---|
-| Amount invested (CAD) | 1,000.00 |
-| Price per oz (CAD) | 5,250.00 |
-| Quantity (oz) | 0.187619 |
-| Amount after fees (CAD) | 985.00 |
-
-The gold page then shows total invested, total after fees, fees paid, average cost per oz (with fees) and average purchase price per oz, across all your purchases.
 
 ### Prices
 Prices come from Yahoo Finance's public quote service. Only **ticker symbols** are sent (for example `XEQT.TO`), never your quantities, costs or accounts. Prices refresh when you open the app or pull down to refresh.
@@ -72,13 +59,12 @@ Prices come from Yahoo Finance's public quote service. Only **ticker symbols** a
 |---|---|
 | US stocks and ETFs | Near real-time |
 | Canadian stocks and ETFs (`.TO`) | ~15 minutes |
-| Gold (COMEX) | ~10 minutes |
 | Mutual-fund index funds | One price per day, after the close |
 
 If a price can't be loaded, the app uses the last saved price, then your own price, then your last trade price.
 
 ## Using the app
-1. **Add a trade:** tap **+**, pick Stock / ETF / Index Fund / Gold, then search a name or ticker (`XEQT`, `Apple`…). Canadian listings end in `.TO`.
+1. **Add a trade:** tap **+**, pick the type of investment, then search a name or ticker (`XEQT`, `Apple`…). Canadian listings end in `.TO`.
 2. **Fill in the details:** Buy or Sell, date, broker, account, shares, price and fees. *Total paid* is optional and is worked out for you.
 3. **See a holding:** tap it for its numbers, a per-account breakdown, the price and its time, and every transaction.
 4. **Edit or delete:** tap a transaction to edit it, or swipe left to delete it (also from the **Activity** tab).
@@ -116,7 +102,7 @@ This **replaces everything in the app** with a sample portfolio, so only use it 
 |---|---|
 | `Portfolio/Portfolio/Models.swift` | Stored data: holdings and trades (SwiftData) |
 | `Portfolio/Portfolio/Calculations.swift` | Book cost, averages, today's and total return, realized gains |
-| `Portfolio/Portfolio/PriceService.swift` | Live prices, gold in CAD, USD → CAD, ticker search |
+| `Portfolio/Portfolio/PriceService.swift` | Live prices, USD → CAD, ticker search |
 | `Portfolio/Portfolio/Views/` | Screens: Portfolio, holding detail, add/edit trade, Activity, Settings |
 | `Portfolio/Portfolio/Backup.swift` | JSON export and restore |
 | `Portfolio/Portfolio/DemoData.swift` | Sample portfolio for `-demo` (Debug builds only) |
