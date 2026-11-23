@@ -35,6 +35,7 @@ struct TradeFormView: View {
     @State private var afterFeesText: String
     @State private var cadText: String
     @State private var note: String
+    @State private var showMoreDetails: Bool
 
     init(mode: Mode) {
         self.mode = mode
@@ -72,6 +73,8 @@ struct TradeFormView: View {
         _feesText = State(initialValue: f); _totalText = State(initialValue: tot)
         _afterFeesText = State(initialValue: after); _cadText = State(initialValue: cad)
         _note = State(initialValue: nt)
+        // Open the extras when editing a trade that already uses them.
+        _showMoreDetails = State(initialValue: !f.isEmpty || !tot.isEmpty || !cad.isEmpty || !nt.isEmpty)
     }
 
     private var isEditing: Bool { if case .edit = mode { true } else { false } }
@@ -110,7 +113,7 @@ struct TradeFormView: View {
 
     private var validationMessage: String? {
         if !isGold && symbol.isEmpty { return "Choose an investment." }
-        guard let q = quantity, q > 0 else { return isGold ? "Enter the quantity in ounces." : "Enter the number of shares." }
+        guard let q = quantity, q > 0 else { return isGold ? "Enter the quantity in ounces." : "Enter the quantity (number of shares)." }
         if isGold && side == .buy && (total ?? 0) <= 0 { return "Enter the amount you invested." }
         if isGold && side == .sell && (total ?? 0) <= 0 { return "Enter the amount you received." }
         if (effectivePrice ?? 0) <= 0 { return "Enter the price." }
@@ -123,33 +126,41 @@ struct TradeFormView: View {
         NavigationStack {
             Form {
                 investmentSection
-                Section {
-                    Picker("Type", selection: $side) {
-                        ForEach(TradeSide.allCases) { Text($0.label).tag($0) }
+                if isGold {
+                    Section {
+                        sidePicker
+                        DatePicker("Date", selection: $date, in: ...Date.now.addingTimeInterval(86_400), displayedComponents: .date)
+                        brokerPicker
+                        accountPicker
                     }
-                    .pickerStyle(.segmented)
-                    DatePicker("Date", selection: $date, in: ...Date.now.addingTimeInterval(86_400), displayedComponents: .date)
-                    Picker("Broker", selection: $broker) {
-                        ForEach(Broker.allCases) { Text($0.label).tag($0) }
+                    goldFields
+                    Section("Note") {
+                        TextField("Optional", text: $note, axis: .vertical)
                     }
-                    Picker("Account", selection: $accountType) {
-                        ForEach(AccountType.allCases) { Text($0.label).tag($0) }
+                } else {
+                    securityFields
+                    Section("Account") {
+                        brokerPicker
+                        accountPicker
                     }
-                }
-                if isGold { goldFields } else { securityFields }
-                Section("Note") {
-                    TextField("Optional", text: $note, axis: .vertical)
+                    moreDetails
                 }
                 if let msg = validationMessage {
                     Section { Text(msg).font(.footnote).foregroundStyle(.secondary) }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle(isEditing ? "Edit transaction" : "New transaction")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save).disabled(validationMessage != nil)
+                }
+                // The number pad has no return key, so give it a way to close.
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { hideKeyboard() }.fontWeight(.semibold)
                 }
             }
             .onChange(of: kind) { _, newKind in
@@ -228,22 +239,61 @@ struct TradeFormView: View {
         }
     }
 
+    private var sidePicker: some View {
+        Picker("Type", selection: $side) {
+            ForEach(TradeSide.allCases) { Text($0.label).tag($0) }
+        }
+        .pickerStyle(.segmented)
+    }
+
+    private var brokerPicker: some View {
+        Picker("Broker", selection: $broker) {
+            ForEach(Broker.allCases) { Text($0.label).tag($0) }
+        }
+    }
+
+    private var accountPicker: some View {
+        Picker("Account", selection: $accountType) {
+            ForEach(AccountType.allCases) { Text($0.label).tag($0) }
+        }
+    }
+
+    /// Google Finance–style: quantity, purchase date, purchase price.
     @ViewBuilder
     private var securityFields: some View {
+        let currencyNote = currency == .usd ? " (USD)" : ""
         Section {
-            NumberField(label: "Shares", text: $quantityText)
-            NumberField(label: "Price per share (\(currency.rawValue))", text: $priceText)
-            NumberField(label: "Fees / commission", text: $feesText, placeholder: "0.00")
-            NumberField(label: side == .buy ? "Total paid (optional)" : "Total received (optional)",
-                        text: $totalText,
-                        placeholder: Fmt.plain(autoTotal) )
-            if currency == .usd {
-                NumberField(label: side == .buy ? "CAD paid (optional)" : "CAD received (optional)", text: $cadText)
+            sidePicker
+            NumberField(label: "Quantity", text: $quantityText, placeholder: "0")
+            DatePicker(side == .buy ? "Purchase date" : "Sale date", selection: $date,
+                       in: ...Date.now.addingTimeInterval(86_400), displayedComponents: .date)
+            NumberField(label: (side == .buy ? "Purchase price" : "Sale price") + currencyNote, text: $priceText)
+            if let total = autoTotal, total > 0 {
+                LabeledValue(label: side == .buy ? "Total cost" : "Total received", value: Fmt.money(total, currency))
             }
         } header: {
-            Text("Details")
+            Text("Transaction")
         } footer: {
-            Text(securityFooter)
+            Text("Price is per share. You can find it on your Wealthsimple or Questrade order.")
+        }
+    }
+
+    /// Rarely needed extras, kept out of the way.
+    private var moreDetails: some View {
+        Section {
+            DisclosureGroup("More details (optional)", isExpanded: $showMoreDetails) {
+                NumberField(label: "Fees / commission", text: $feesText, placeholder: "0.00")
+                NumberField(label: side == .buy ? "Total paid, if different" : "Total received, if different",
+                            text: $totalText, placeholder: Fmt.plain(autoTotal))
+                if currency == .usd {
+                    NumberField(label: side == .buy ? "CAD paid" : "CAD received", text: $cadText, placeholder: "optional")
+                }
+                TextField("Note", text: $note, axis: .vertical)
+            }
+        } footer: {
+            Text(currency == .usd
+                 ? "Add a commission if your broker charged one. If your broker converted CAD to buy this, enter the CAD amount so your CAD totals match theirs."
+                 : "Add a commission if your broker charged one (Wealthsimple usually doesn't).")
         }
     }
 
@@ -252,12 +302,8 @@ struct TradeFormView: View {
         return side == .buy ? q * p + (fees ?? 0) : q * p - (fees ?? 0)
     }
 
-    private var securityFooter: String {
-        var s = "Leave Total blank and it's worked out as shares × price \(side == .buy ? "+" : "−") fees."
-        if currency == .usd {
-            s += " If your broker converted CAD to buy this, enter the CAD amount so your CAD book cost matches theirs."
-        }
-        return s
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     @ViewBuilder

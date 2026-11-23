@@ -65,12 +65,17 @@ struct Position: Identifiable {
     // MARK: Building
 
     /// Builds the position for one account. ACB is tracked per account, as brokers do.
-    static func build(asset: Asset, trades: [Trade], fx: Double, priceInfo: PriceInfo?) -> Position {
+    /// `tradeFX` gives USD → CAD on a trade's date, for USD trades without a CAD amount
+    /// (falls back to today's rate `fx`).
+    static func build(asset: Asset, trades: [Trade], fx: Double, priceInfo: PriceInfo?,
+                      tradeFX: ((Date) -> Double?)? = nil) -> Position {
         var p = Position(asset: asset)
         p.fx = fx
         p.priceInfo = priceInfo
+        // Same order as the chart: by calendar day, buys before sells on the same day.
         let sorted = trades.sorted {
-            if $0.date != $1.date { return $0.date < $1.date }
+            let a = DayKey.day($0.date), b = DayKey.day($1.date)
+            if a != b { return a < b }
             return $0.side == .buy && $1.side == .sell
         }
         let isCAD = asset.currency == .cad
@@ -79,7 +84,7 @@ struct Position: Identifiable {
             p.tradeCount += 1
             p.feesPaid += t.fees
             let cash = t.cashAmount
-            let cashCAD = isCAD ? cash : (t.cadAmount ?? cash * fx)
+            let cashCAD = isCAD ? cash : (t.cadAmount ?? cash * (tradeFX?(t.date) ?? fx))
             switch t.side {
             case .buy:
                 p.quantity += t.quantity
@@ -214,24 +219,121 @@ struct PortfolioSummary {
 enum PortfolioBuilder {
     /// One position per asset (accounts merged), limited to the accounts in `filter`.
     static func positions(assets: [Asset], filter: AccountFilter, fx: Double,
+                          tradeFX: ((Date) -> Double?)? = nil,
                           priceFor: (Asset, [Trade]) -> PriceInfo?) -> [Position] {
         var result: [Position] = []
         for asset in assets {
             let trades = asset.trades.filter { filter.includes($0.account) }
             guard !trades.isEmpty else { continue }
-            result.append(position(asset: asset, trades: trades, fx: fx, priceInfo: priceFor(asset, trades)))
+            result.append(position(asset: asset, trades: trades, fx: fx, priceInfo: priceFor(asset, trades),
+                                   tradeFX: tradeFX))
         }
         return result
     }
 
-    static func position(asset: Asset, trades: [Trade], fx: Double, priceInfo: PriceInfo?) -> Position {
+    static func position(asset: Asset, trades: [Trade], fx: Double, priceInfo: PriceInfo?,
+                         tradeFX: ((Date) -> Double?)? = nil) -> Position {
         let rate = asset.currency == .cad ? 1 : fx
         let byAccount = Dictionary(grouping: trades, by: { $0.account })
         var merged: Position?
         for (_, accountTrades) in byAccount.sorted(by: { $0.key.id < $1.key.id }) {
-            let p = Position.build(asset: asset, trades: accountTrades, fx: rate, priceInfo: priceInfo)
+            let p = Position.build(asset: asset, trades: accountTrades, fx: rate, priceInfo: priceInfo,
+                                   tradeFX: tradeFX)
             if merged == nil { merged = p } else { merged!.merge(p) }
         }
         return merged ?? Position(asset: asset, fx: rate, priceInfo: priceInfo)
+    }
+}
+
+/// One row of a holding's transaction table (like Google Finance's purchase lots).
+/// Buys show what's still held from that purchase; sells show the sale and its realized gain.
+/// Sales shrink every open purchase in that account proportionally (the average-cost method),
+/// so the rows add up to the holding's totals. Amounts are kept in the stock's own currency
+/// and in CAD (cost converted at the purchase-day rate, like your broker).
+struct LotRow: Identifiable {
+    let trade: Trade
+    var remainingQuantity: Double   // buy: still held from this purchase · sell: quantity sold
+    var remainingCost = 0.0         // buy: cost of what's still held (stock's currency)
+    var remainingCostCAD = 0.0
+    var realized: Double?           // sell: gain or loss on the sale (stock's currency)
+    var realizedCAD: Double?
+    var proceedsCAD = 0.0           // sell: money received, in CAD
+    var id: ObjectIdentifier { ObjectIdentifier(trade) }
+    var isSell: Bool { trade.side == .sell }
+
+    /// - Parameter fx: CAD per unit of the stock's currency today (1 for CAD stocks).
+    func marketValue(_ info: PriceInfo?, inCAD: Bool, fx: Double) -> Double? {
+        if isSell { return inCAD ? proceedsCAD : trade.cashAmount }
+        return info.map { remainingQuantity * $0.price * (inCAD ? fx : 1) }
+    }
+
+    func totalGain(_ info: PriceInfo?, inCAD: Bool, fx: Double) -> Double? {
+        if isSell { return inCAD ? realizedCAD : realized }
+        return marketValue(info, inCAD: inCAD, fx: fx).map { $0 - (inCAD ? remainingCostCAD : remainingCost) }
+    }
+
+    func totalGainPercent(_ info: PriceInfo?, inCAD: Bool, fx: Double) -> Double? {
+        guard let g = totalGain(info, inCAD: inCAD, fx: fx) else { return nil }
+        let base: Double
+        if isSell {
+            base = (inCAD ? proceedsCAD : trade.cashAmount) - (inCAD ? (realizedCAD ?? 0) : (realized ?? 0))
+        } else {
+            base = inCAD ? remainingCostCAD : remainingCost
+        }
+        return base > 0 ? g / base : nil
+    }
+}
+
+enum LotBuilder {
+    /// Rows in date order (oldest first).
+    /// - Parameters:
+    ///   - currentFX: today's CAD per unit of the stock's currency (1 for CAD stocks).
+    ///   - tradeFX: the rate on a trade's date, when known.
+    static func rows(trades: [Trade], isCAD: Bool = true, currentFX: Double = 1,
+                     tradeFX: ((Date) -> Double?)? = nil) -> [LotRow] {
+        func cad(_ t: Trade) -> Double {
+            if isCAD { return t.cashAmount }
+            return t.cadAmount ?? t.cashAmount * (tradeFX?(t.date) ?? currentFX)
+        }
+        let sorted = trades.sorted {
+            let a = DayKey.day($0.date), b = DayKey.day($1.date)
+            if a != b { return a < b }
+            return $0.side == .buy && $1.side == .sell
+        }
+        var rows: [LotRow] = []
+        var openByAccount: [AccountRef: [Int]] = [:]   // indexes into `rows`
+        for t in sorted {
+            switch t.side {
+            case .buy:
+                openByAccount[t.account, default: []].append(rows.count)
+                rows.append(LotRow(trade: t, remainingQuantity: t.quantity,
+                                   remainingCost: t.cashAmount, remainingCostCAD: cad(t)))
+            case .sell:
+                let open = openByAccount[t.account] ?? []
+                let held = open.reduce(0) { $0 + rows[$1].remainingQuantity }
+                var realized = 0.0, realizedCAD = 0.0
+                let proceedsCAD = cad(t)
+                if held > 0, t.quantity > 0 {
+                    let sold = min(t.quantity, held)
+                    let keep = 1 - sold / held
+                    var costOut = 0.0, costOutCAD = 0.0
+                    for i in open {
+                        costOut += rows[i].remainingCost * (1 - keep)
+                        costOutCAD += rows[i].remainingCostCAD * (1 - keep)
+                        rows[i].remainingQuantity *= keep
+                        rows[i].remainingCost *= keep
+                        rows[i].remainingCostCAD *= keep
+                        if rows[i].remainingQuantity < 1e-9 {
+                            rows[i].remainingQuantity = 0; rows[i].remainingCost = 0; rows[i].remainingCostCAD = 0
+                        }
+                    }
+                    realized = t.cashAmount * (sold / t.quantity) - costOut
+                    realizedCAD = proceedsCAD * (sold / t.quantity) - costOutCAD
+                }
+                rows.append(LotRow(trade: t, remainingQuantity: t.quantity, realized: realized,
+                                   realizedCAD: realizedCAD, proceedsCAD: proceedsCAD))
+            }
+        }
+        return rows
     }
 }

@@ -15,6 +15,22 @@ struct PortfolioView: View {
         }
     }
 
+    private func historyPoints(_ summary: PortfolioSummary) -> [HistoryPoint] {
+        PortfolioHistory.build(
+            assets: assets, filter: filter, currentFX: prices.usdToCad, today: DayKey.day(.now),
+            now: (summary.marketValue, summary.bookCost, summary.realized),
+            historyDays: { prices.history[$0]?.days ?? [] },
+            close: { prices.close($0, onOrBefore: $1) },
+            fxOnDay: { prices.close(PriceService.usdCadSymbol, onOrBefore: $0) })
+    }
+
+    /// Changes whenever a trade is added, edited or removed, so the chart history reloads.
+    private var tradesSignature: String {
+        let trades = assets.flatMap(\.trades)
+        let first = trades.map(\.date).min()?.timeIntervalSince1970 ?? 0
+        return "\(trades.count)-\(first)-\(assets.count)"
+    }
+
     /// Accounts that have at least one transaction.
     private var knownAccounts: [AccountRef] {
         let all = Set(assets.flatMap { $0.trades.map(\.account) })
@@ -32,10 +48,16 @@ struct PortfolioView: View {
                             .accessibilityLabel("Add transaction")
                     }
                 }
-                .refreshable { await prices.refresh(assets: assets) }
+                .refreshable {
+                    await prices.refresh(assets: assets)
+                    await prices.loadHistory(assets: assets)
+                }
                 .task {
                     let stale = prices.lastUpdated.map { Date().timeIntervalSince($0) > 60 } ?? true
                     if stale && !assets.isEmpty { await prices.refresh(assets: assets) }
+                }
+                .task(id: tradesSignature) {
+                    if !assets.isEmpty { await prices.loadHistory(assets: assets) }
                 }
                 .sheet(isPresented: $showingAdd) {
                     TradeFormView(mode: .new(nil))
@@ -58,9 +80,13 @@ struct PortfolioView: View {
             let all = positions
             let open = all.filter(\.isOpen)
             let closed = all.filter { !$0.isOpen }
+            let summary = PortfolioSummary(positions: all)
             List {
                 Section {
-                    SummaryCard(summary: PortfolioSummary(positions: all), filterLabel: filter.label)
+                    SummaryCard(summary: summary, filterLabel: filter.label)
+                }
+                Section {
+                    PortfolioChartCard(points: historyPoints(summary), isLoading: prices.isLoadingHistory)
                 }
                 if let error = prices.lastError {
                     Section {
@@ -167,26 +193,35 @@ struct SummaryCard: View {
     var filterLabel: String
 
     var body: some View {
+        // Everything made or lost so far: on what you hold, plus gains locked in by selling.
+        let gain = summary.totalReturn + summary.realized
+        let gainPct: Double? = summary.bookCost > 0 ? gain / summary.bookCost : nil
+        let isUp = gain >= -0.004
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(filterLabel).font(.subheadline).foregroundStyle(.secondary)
-                Text(Fmt.money(summary.marketValue))
+                Text("Total invested · \(filterLabel)").font(.subheadline).foregroundStyle(.secondary)
+                Text(Fmt.money(summary.bookCost))
                     .font(.system(size: 34, weight: .bold, design: .rounded).monospacedDigit())
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
             }
+            // Plain-language verdict: is the money you put in up or down?
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Your money is \(isUp ? "up" : "down")")
+                    .font(.subheadline.weight(.semibold))
+                HStack(spacing: 6) {
+                    Image(systemName: isUp ? "arrow.up.right.circle.fill" : "arrow.down.right.circle.fill")
+                    Text(Fmt.money(abs(gain)) + (gainPct.map { "  (\(Fmt.percent($0)))" } ?? ""))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                .font(.title3.weight(.bold).monospacedDigit())
+            }
+            .foregroundStyle(isUp ? Color.green : Color.red)
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
                 GridRow {
-                    Text("Today's return").foregroundStyle(.secondary)
-                    ChangeText(amount: summary.todayReturn, percent: summary.todayReturnPercent)
-                }
-                GridRow {
-                    Text("Total return").foregroundStyle(.secondary)
-                    ChangeText(amount: summary.totalReturn, percent: summary.totalReturnPercent)
-                }
-                GridRow {
-                    Text("Book cost").foregroundStyle(.secondary)
-                    Text(Fmt.money(summary.bookCost)).monospacedDigit()
+                    Text("Now worth").foregroundStyle(.secondary)
+                    Text(Fmt.money(summary.marketValue)).monospacedDigit()
                 }
                 if abs(summary.realized) > 0.004 {
                     GridRow {
@@ -236,13 +271,16 @@ struct PositionRow: View {
                 }
             }
             Spacer(minLength: 8)
+            // CAD first for every holding (like Google Finance); value, then total gain/loss.
             VStack(alignment: .trailing, spacing: 3) {
-                Text(Fmt.money(position.marketValue, a.currency))
+                Text(Fmt.money(position.marketValueCAD))
                     .font(.headline.monospacedDigit())
-                ChangeText(amount: position.todayReturn, percent: position.todayReturnPercent,
-                           currency: a.currency, font: .caption)
-                ChangeText(amount: position.totalReturn, percent: position.totalReturnPercent,
-                           currency: a.currency, font: .caption)
+                ChangeText(amount: position.totalReturnCAD, percent: position.totalReturnCADPercent,
+                           font: .caption)
+                if a.currency == .usd {
+                    Text(Fmt.money(position.marketValue, .usd))
+                        .font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
+                }
             }
         }
         .padding(.vertical, 2)

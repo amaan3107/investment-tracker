@@ -46,52 +46,31 @@ struct HoldingDetailView: View {
         let cur = asset.currency
         List {
             Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(asset.name).font(.subheadline).foregroundStyle(.secondary)
-                    Text(Fmt.money(p.marketValue, cur))
-                        .font(.system(size: 32, weight: .bold, design: .rounded).monospacedDigit())
-                    Text(filter.label).font(.caption).foregroundStyle(.tertiary)
-                }
-                .padding(.vertical, 4)
+                HoldingHeader(asset: asset, position: p, filterLabel: filter.label)
             }
 
-            Section("Your position") {
-                LabeledValue(label: "Quantity", value: "\(Fmt.quantity(p.quantity, kind: asset.kind)) \(asset.kind.unitLabel)")
-                LabeledValue(label: "Average price", value: Fmt.money(p.averagePrice, cur))
-                LabeledValue(label: "Book cost", value: Fmt.money(p.bookCost, cur))
-                LabeledValue(label: "Market value", value: Fmt.money(p.marketValue, cur))
-                HStack {
-                    Text("Today's return").foregroundStyle(.secondary)
-                    Spacer()
-                    ChangeText(amount: p.todayReturn, percent: p.todayReturnPercent, currency: cur, font: .body)
-                }
-                HStack {
-                    Text("Total return").foregroundStyle(.secondary)
-                    Spacer()
-                    ChangeText(amount: p.totalReturn, percent: p.totalReturnPercent, currency: cur, font: .body)
-                }
-                if abs(p.realized) > 0.004 {
-                    HStack {
-                        Text("Realized (sold)").foregroundStyle(.secondary)
-                        Spacer()
-                        ChangeText(amount: p.realized, percent: nil, currency: cur, font: .body)
-                    }
-                }
+            Section {
+                TransactionTable(rows: LotBuilder.rows(trades: trades, isCAD: cur == .cad,
+                                                       currentFX: p.fx),
+                                 asset: asset, priceInfo: p.priceInfo, fx: p.fx,
+                                 onEdit: { editingTrade = $0 },
+                                 onDelete: { t in
+                                     TradeStore.delete(t, context: context)
+                                     if asset.modelContext == nil || asset.trades.isEmpty { dismiss() }
+                                 })
+                    .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 0))
+                Button { addingTrade = true } label: { Label("Add transaction", systemImage: "plus") }
+            } header: {
+                Text("Transactions")
+            } footer: {
+                Text("Oldest first. Tap a row to edit it, press and hold to delete. Swipe sideways to see every column.")
             }
 
             if cur == .usd {
                 Section {
-                    LabeledValue(label: "Market value", value: Fmt.money(p.marketValueCAD))
-                    LabeledValue(label: "Book cost", value: Fmt.money(p.bookCostCAD))
-                    HStack {
-                        Text("Total return").foregroundStyle(.secondary)
-                        Spacer()
-                        ChangeText(amount: p.totalReturnCAD, percent: p.totalReturnCADPercent, font: .body)
-                    }
-                } header: {
-                    Text("In CAD")
+                    LabeledValue(label: "USD → CAD today", value: prices.usdToCad.formatted(.number.precision(.fractionLength(4))))
                 } footer: {
-                    Text("Includes currency moves. Add the CAD amount you paid on each trade to match your broker exactly.")
+                    Text("If your broker converted CAD to buy this, add the CAD amount you paid under \"More details\" on each purchase, so your totals match theirs exactly.")
                 }
             }
 
@@ -132,24 +111,19 @@ struct HoldingDetailView: View {
             }
 
             Section {
-                ForEach(trades) { t in
-                    Button { editingTrade = t } label: { TradeRow(trade: t, showSymbol: false) }
-                        .tint(.primary)
-                }
-                .onDelete { offsets in
-                    let list = trades
-                    for i in offsets { TradeStore.delete(list[i], context: context) }
-                    if asset.modelContext == nil || asset.trades.isEmpty { dismiss() }
-                }
-                Button { addingTrade = true } label: { Label("Add transaction", systemImage: "plus") }
-            } header: {
-                Text("Transactions")
-            }
-
-            Section {
                 Button("Delete \(asset.displaySymbol) and all its transactions", role: .destructive) {
                     confirmDelete = true
                 }
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+                .fontWeight(.semibold)
             }
         }
         .navigationTitle(asset.displaySymbol)
@@ -182,14 +156,6 @@ struct HoldingDetailView: View {
                 if asset.isGold, let usd = prices.quotes[PriceService.goldFuturesSymbol] {
                     LabeledValue(label: "In USD", value: Fmt.money(usd.price, .usd))
                     LabeledValue(label: "USD → CAD rate", value: prices.usdToCad.formatted(.number.precision(.fractionLength(4))))
-                }
-                LabeledValue(label: "Previous close", value: Fmt.money(live.previousClose, cur))
-                HStack {
-                    Text("Today").foregroundStyle(.secondary)
-                    Spacer()
-                    ChangeText(amount: live.price - live.previousClose,
-                               percent: live.previousClose > 0 ? live.price / live.previousClose - 1 : nil,
-                               currency: cur, font: .body)
                 }
             } else {
                 Text("No live price yet — pull down to refresh.")

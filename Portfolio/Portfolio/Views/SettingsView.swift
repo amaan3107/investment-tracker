@@ -66,7 +66,7 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Text("Book cost uses the average-cost method (ACB), per account, the same way Canadian brokers report it. Today's return compares to yesterday's close, or to your purchase price for anything bought today.")
+                    Text("Book cost uses the average-cost method (ACB), per account, the same way Canadian brokers report it. Total gain/loss is what your holdings are worth now minus what you paid. US stocks are shown in CAD at today's exchange rate, like Google Finance, unless you entered the CAD you actually paid on a purchase.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } header: {
