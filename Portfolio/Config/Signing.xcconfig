@@ -1,0 +1,8 @@
+// Signing settings shared by everyone who builds this project.
+//
+// Your personal Apple Team ID is NOT stored here. It lives in
+// Signing.local.xcconfig next to this file, which is git-ignored.
+// To set it up, copy Signing.local.xcconfig.example to
+// Signing.local.xcconfig and put your own Team ID in it.
+
+#include? "Signing.local.xcconfig"

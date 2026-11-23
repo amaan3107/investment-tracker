@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+
+# Xcode per-user state and build output
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+
+# Never commit personal portfolio data.
+# Backups exported from the app's Settings tab:
+portfolio-backup*.json
+# App databases, if ever copied off a device or simulator:
+*.store
+*.store-shm
+*.store-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Personal signing settings (Apple Team ID)
+Signing.local.xcconfig
